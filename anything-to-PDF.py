@@ -1,6 +1,8 @@
 import os
 from PIL import Image
 from PyPDF2 import PdfMerger
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext
 
 def compress_image(image_path, max_width=1200):
     """Resize image to reduce size while maintaining aspect ratio."""
@@ -21,8 +23,7 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
     ]
 
     if not files:
-        print("No valid media files found in the folder!")
-        return
+        return "No valid media files found in the folder!"
 
     print(f"Found {len(files)} media files. Sorting by {sort_by}...")
     if sort_by == 'name':
@@ -45,7 +46,7 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
                     merger.append(file_path)
                     print(f"Added PDF: {file}")
                 except Exception as e:
-                    print(f"Error adding PDF {file}: {e}")
+                    return f"Error adding PDF {file}: {e}"
             else:
                 try:
                     if compress:
@@ -59,7 +60,7 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
                         image_list.append(img)
                         print(f"Added original image: {file}")
                 except Exception as e:
-                    print(f"Error processing image {file}: {e}")
+                    return f"Error processing image {file}: {e}"
 
         if image_list:
             print("Saving images to temporary PDF...")
@@ -74,7 +75,7 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
         print(f"PDF successfully saved as {output_pdf}")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        return f"An error occurred: {e}"
 
     finally:
         merger.close()
@@ -85,16 +86,78 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
             except Exception as e:
                 print(f"Error removing temporary PDF: {e}")
 
-# Usage example
-if __name__ == "__main__":
-    folder = input("Enter the folder path containing images and PDFs: ").strip()
-    output_file = input("Enter the full path and filename for the output PDF (e.g., 'C:\\Users\\YourName\\Desktop\\output.pdf'): ").strip()
-    sort_option = input("Sort by 'name' or 'date'? ").strip().lower()
-    compress_option = input("Do you want to compress images? (yes/no): ").strip().lower()
+def run_combination():
+    folder = folder_entry.get()
+    output_file = output_entry.get()
+    sort_option = sort_var.get()
+    compress_images = compress_var.get()
 
-    if sort_option not in ['name', 'date']:
-        print("Invalid sort option. Defaulting to 'name'.")
-        sort_option = 'name'
+    status_text.delete(1.0, tk.END)  # Clear previous status
 
-    compress_images = compress_option == 'yes'
-    combine_media_to_pdf(folder, output_file, sort_by=sort_option, compress=compress_images)
+    if not folder or not output_file:
+        messagebox.showwarning("Input Error", "Please specify both folder and output file paths.")
+        return
+
+    # Perform the combination and compression
+    status_text.insert(tk.END, "Combining media files...\n")
+    result = combine_media_to_pdf(folder, output_file, sort_by=sort_option, compress=compress_images)
+
+    if result:
+        status_text.insert(tk.END, f"Status: {result}\n")
+    else:
+        status_text.insert(tk.END, "Completed successfully!\n")
+
+def browse_folder():
+    folder_path = filedialog.askdirectory()
+    folder_entry.delete(0, tk.END)
+    folder_entry.insert(0, folder_path)
+
+def browse_output():
+    output_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    output_entry.delete(0, tk.END)
+    output_entry.insert(0, output_path)
+
+# Create the GUI
+root = tk.Tk()
+root.title("Media to PDF Combiner")
+
+# Folder Selection
+folder_label = tk.Label(root, text="Folder Path:")
+folder_label.grid(row=0, column=0, padx=5, pady=5)
+folder_entry = tk.Entry(root, width=50)
+folder_entry.grid(row=0, column=1, padx=5, pady=5)
+folder_button = tk.Button(root, text="Browse", command=browse_folder)
+folder_button.grid(row=0, column=2, padx=5, pady=5)
+
+# Output File Selection
+output_label = tk.Label(root, text="Output PDF Path:")
+output_label.grid(row=1, column=0, padx=5, pady=5)
+output_entry = tk.Entry(root, width=50)
+output_entry.grid(row=1, column=1, padx=5, pady=5)
+output_button = tk.Button(root, text="Browse", command=browse_output)
+output_button.grid(row=1, column=2, padx=5, pady=5)
+
+# Sorting Options
+sort_label = tk.Label(root, text="Sort By:")
+sort_label.grid(row=2, column=0, padx=5, pady=5)
+sort_var = tk.StringVar(value="name")
+sort_name_radio = tk.Radiobutton(root, text="Name", variable=sort_var, value="name")
+sort_name_radio.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+sort_date_radio = tk.Radiobutton(root, text="Date", variable=sort_var, value="date")
+sort_date_radio.grid(row=2, column=1, padx=5, pady=5)
+
+# Compression Option
+compress_var = tk.BooleanVar()
+compress_check = tk.Checkbutton(root, text="Compress Images", variable=compress_var)
+compress_check.grid(row=3, columnspan=3, padx=5, pady=5)
+
+# Run Button
+run_button = tk.Button(root, text="Combine to PDF", command=run_combination)
+run_button.grid(row=4, columnspan=3, padx=5, pady=5)
+
+# Status Text Area
+status_text = scrolledtext.ScrolledText(root, width=60, height=15)
+status_text.grid(row=5, columnspan=3, padx=5, pady=5)
+
+# Start the GUI loop
+root.mainloop()
