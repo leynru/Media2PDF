@@ -3,6 +3,8 @@ from PIL import Image
 from PyPDF2 import PdfMerger
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import threading
+import time  # Import time for duration tracking
 
 def compress_image(image_path, max_width=1200):
     """Resize image to reduce size while maintaining aspect ratio."""
@@ -25,10 +27,12 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
         log_message("Error: Folder does not exist.")
         return
 
-    files = [
-        f for f in os.listdir(folder_path)
-        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.pdf'))
-    ]
+    files = []
+    # Collect all valid media files from the folder and subfolders
+    for root, _, filenames in os.walk(folder_path):
+        for filename in filenames:
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.pdf')):
+                files.append(os.path.join(root, filename))
 
     if not files:
         log_message("Info: No valid media files found in the folder!")
@@ -37,35 +41,44 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
     if sort_by == 'name':
         files.sort()
     elif sort_by == 'date':
-        files.sort(key=lambda f: os.path.getmtime(os.path.join(folder_path, f)))
+        files.sort(key=lambda f: os.path.getmtime(f))
 
     merger = PdfMerger()
     temp_pdf = "temp_images.pdf"
+
+    start_time = time.time()  # Record start time
 
     try:
         image_list = []  # Store images for temporary PDF
 
         for idx, file in enumerate(files, 1):
-            file_path = os.path.join(folder_path, file)
             log_message(f"Processing file {idx}/{len(files)}: {file}")
 
             if file.lower().endswith('.pdf'):
                 try:
-                    merger.append(file_path)
+                    merger.append(file)
                     log_message(f"Added PDF: {file}")
                 except Exception as e:
                     log_message(f"Error adding PDF {file}: {e}")
             else:
                 try:
                     if compress:
-                        img = compress_image(file_path)  # Compress image if enabled
+                        img = compress_image(file)  # Compress image if enabled
                         log_message(f"Compressed and added image: {file}")
                     else:
-                        img = Image.open(file_path).convert('RGB')  # Add original image
+                        img = Image.open(file).convert('RGB')  # Add original image
                         log_message(f"Added original image: {file}")
                     image_list.append(img)
                 except Exception as e:
                     log_message(f"Error processing image {file}: {e}")
+
+            # Update ETA and progress bar
+            elapsed_time = time.time() - start_time
+            if idx > 0:  # Prevent division by zero
+                estimated_time_remaining = (elapsed_time / idx) * (len(files) - idx)
+                eta_label.config(text=f"ETA: {estimated_time_remaining:.2f} seconds")
+                progress = (idx / len(files)) * 100
+                progress_bar['value'] = progress  # Update progress bar
 
         if image_list:
             log_message("Saving images to temporary PDF...")
@@ -86,6 +99,11 @@ def combine_media_to_pdf(folder_path, output_pdf, sort_by='name', compress=False
             except Exception as e:
                 log_message(f"Error removing temporary PDF: {e}")
 
+        # Calculate and log the total duration
+        total_duration = time.time() - start_time
+        log_message(f"Total time taken: {total_duration:.2f} seconds")
+        progress_bar['value'] = 100  # Complete the progress bar
+
 def browse_folder():
     folder_path = filedialog.askdirectory()
     folder_entry.delete(0, tk.END)
@@ -104,7 +122,9 @@ def create_pdf():
     compress_option = compress_var.get()
 
     compress_images = compress_option == "yes"
-    combine_media_to_pdf(folder_path, output_file, sort_by=sort_option, compress=compress_images)
+    
+    # Start the PDF creation in a new thread
+    threading.Thread(target=combine_media_to_pdf, args=(folder_path, output_file, sort_option, compress_images), daemon=True).start()
 
 # Create the main window
 root = tk.Tk()
@@ -136,6 +156,14 @@ tk.Button(root, text="Create PDF", command=create_pdf).grid(row=4, column=0, col
 # Create a Text widget for status updates
 status_text = tk.Text(root, height=10, width=70, state=tk.DISABLED)
 status_text.grid(row=5, column=0, columnspan=3, padx=10, pady=10)
+
+# Create a label for ETA
+eta_label = tk.Label(root, text="", width=70)
+eta_label.grid(row=6, column=0, columnspan=3, padx=10, pady=5)
+
+# Create a ProgressBar for visual progress indication
+progress_bar = ttk.Progressbar(root, length=600, mode='determinate')
+progress_bar.grid(row=7, column=0, columnspan=3, padx=10, pady=10)
 
 # Start the Tkinter event loop
 root.mainloop()
